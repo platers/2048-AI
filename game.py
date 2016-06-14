@@ -8,11 +8,12 @@ class Game:
             as representing a starting board configuration with the ability
             to advance and play 2048.
         """
-        board = [[0]*4 for i in range(4)]
-        self.b = self.spawn(board, 2)
+        self.b = [[0]*4 for i in range(4)]
+        self = self.spawn(2)
 
-    def actions(self, b):
+    def actions(self):
         """ Generate the subsequent board after moving """
+        b = self.b
         array = []
         def moved(b, t):
             return any(x != y for x, y in zip(b, t)) 
@@ -31,31 +32,25 @@ class Game:
             array.append(3)
         return array
 
-    def over(self, b):
+    def over(self):
         """ Return whether or not a board is playable
         """
-        def inner(b):
-            for row in b:
-                for x, y in zip(row[:-1], row[1:]):
-                    if x == y or x == 0 or y == 0:
-                        return True
-            return False
-        return not inner(b) and not inner(zip(*b))
+        return len(self.actions()) == 0
 
-    def string(self, b):
+    def string(self):
         """ String to pretty print the board in matrix form """
-        
+        b = self.b
         return '\n'.join([''.join(['{:8}'.format(item) for item in row])
                                 for row in b])
 
-    def spawn(self, b, k=1):
+    def spawn(self, k=1):
         """ Add k random tiles to the board.
             Chance of 2 is 90%; chance of 4 is 10% """
         rows, cols = list(range(4)), list(range(4))
         random.shuffle(rows)
         random.shuffle(cols)
         
-        copy  = [[x for x in row] for row in b]
+        copy  = [[x for x in row] for row in self.b]
         dist  = [2]*9 + [4]
         count = 0
         for i,j in product(rows, rows):
@@ -63,9 +58,20 @@ class Game:
             
             copy[i][j] = random.sample(dist, 1)[0]
             count += 1
-            if count == k : return copy
-        raise Exception("shouldn't get here")
+            if count == k:
+                self.b = copy
+                return self
+        raise Exception("Can't place a tile")
         
+    def step(self, action):
+        if action == 0 : self.b = self.left(self.b)
+        if action == 1 : self.b = self.right(self.b)
+        if action == 2 : self.b = self.up(self.b)
+        if action == 3 : self.b = self.down(self.b)
+        reward = 1
+        self.spawn(1)
+        done = self.over()
+        return self.b, reward, done
     def left(self, b):
         """ Returns a left merged board
         >>> self.left(test)
