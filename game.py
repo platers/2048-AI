@@ -1,4 +1,5 @@
 import random
+import numpy as np
 from itertools import *
 
 class Game:
@@ -37,6 +38,10 @@ class Game:
         """
         return len(self.actions()) == 0
 
+    def state(self):
+        b = self.b[:]
+        return np.array(b).flatten()
+
     def string(self):
         """ String to pretty print the board in matrix form """
         b = self.b
@@ -62,6 +67,9 @@ class Game:
                 self.b = copy
                 return self
         raise Exception("Can't place a tile")
+
+    def maxTile(self):
+        return max(self.state())
         
     def step(self, action):
         if action == 0 : self.b = self.left(self.b)
@@ -71,7 +79,7 @@ class Game:
         reward = 1
         self.spawn(1)
         done = self.over()
-        return self.b, reward, done
+        return self.b, self.state(), reward, done
     def left(self, b):
         """ Returns a left merged board
         >>> self.left(test)
