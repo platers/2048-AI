@@ -10,15 +10,16 @@ class Game:
             to advance and play 2048.
         """
         self.b = [[0]*4 for i in range(4)]
+        self.r = 0
         self = self.spawn(2)
 
     def actions(self):
         """ Generate the subsequent board after moving """
-        b = self.b
+        r = self.r
         array = []
+        b = self.b[:]
         def moved(b, t):
             return any(x != y for x, y in zip(b, t)) 
-            
         t = self.left(b)
         if moved(b, t):
             array.append(0)
@@ -31,6 +32,7 @@ class Game:
         t = self.down(b)
         if moved(b, t):
             array.append(3)
+        self.r = r
         return array
 
     def over(self):
@@ -44,9 +46,33 @@ class Game:
 
     def string(self):
         """ String to pretty print the board in matrix form """
-        b = self.b
+        b = self.b[:]
         return '\n'.join([''.join(['{:8}'.format(item) for item in row])
                                 for row in b])
+
+    def standardize(self):
+        s = self.b[:]   
+        def subsums(s):
+            a = []
+            a.append(s[0][0] + s[1][1] + s[0][1] + s[1][0])
+            a.append(s[2][0] + s[3][1] + s[2][1] + s[3][0])
+            a.append(s[2][2] + s[3][3] + s[2][3] + s[3][2])
+            a.append(s[0][2] + s[0][3] + s[1][2] + s[1][3])
+            return np.array(a)
+        def rotate(s):
+            s = zip(*s[::-1])
+            l = []
+            for row in s:
+                l.append(list(row))
+            return l
+        for i in xrange(subsums(s).argmax()):
+            self.b = rotate(self.b)
+        if subsums(self.b)[1] + self.b[1][0] > subsums(self.b)[2] + self.b[0][1]:
+            s = zip(*self.b)
+            self.b = []
+            for row in s:
+                self.b.append(list(row))
+
 
     def spawn(self, k=1):
         """ Add k random tiles to the board.
@@ -72,11 +98,12 @@ class Game:
         return max(self.state())
         
     def step(self, action):
+        reward = self.r
         if action == 0 : self.b = self.left(self.b)
         if action == 1 : self.b = self.right(self.b)
         if action == 2 : self.b = self.up(self.b)
         if action == 3 : self.b = self.down(self.b)
-        reward = 1
+        reward = self.r - reward
         self.spawn(1)
         done = self.over()
         return self.b, self.state(), reward, done
@@ -124,7 +151,7 @@ class Game:
     def merge(self, b):
         """ Returns a left merged board """
         
-        def inner(row, a):
+        def inner(row, a, score):
             """
             Helper for merge. If we're finished with the list,
             nothing to do; return the accumulator. Otherwise
@@ -133,15 +160,18 @@ class Game:
             """
             
             if not row:
-                return a
+                return a, score
             x = row[0]
             if len(row) == 1:
-                return inner(row[1:], a + [x])
-            return inner(row[2:], a + [2*x]) if x == row[1] else inner(row[1:], a + [x])
+                return inner(row[1:], a + [x], score)
+            return inner(row[2:], a + [2*x], 2 * x + score) if x == row[1] else inner(row[1:], a + [x], score)
 
         ret = []
+        total = 0
         for row in b:
-            merged = inner([x for x in row if x != 0], [])
+            merged, score = inner([x for x in row if x != 0], [], 0)
+            total += score
             merged = merged + [0]*(len(row)-len(merged))
             ret.append(merged)
+        self.r += total
         return ret

@@ -2,17 +2,18 @@ from game import Game
 import random
 import numpy as np
 import math
+import matplotlib.pyplot as plt
 
 e = 1
-iterations = 200
-max_memory = 1000000
-hidden_size = 30
+iterations = 500
+max_memory = 10000
+hidden_size = 1000
 num_actions = 4
 input_size = 16
-batch_size = 100
+batch_size = 50
 totalSteps = 0
 learningRate = 0.000025
-learnStart = 1000
+learnStart = 3000
 
 class ExperienceReplay(object):
     def __init__(self, max_memory, discount):
@@ -35,20 +36,25 @@ class ExperienceReplay(object):
 
 from keras.models import Sequential
 from keras import optimizers
-from keras.layers.core import Dense, Activation
+from keras.layers.core import Dense, Activation, Dropout
 class DeepQ:
     def createModel(self, activationType, learningRate):
+            layerSize = hidden_size
             model = Sequential()
-            model.add(Dense(100, input_shape=(input_size, ), init='lecun_uniform'))
+            model.add(Dense(layerSize, input_shape=(input_size, ), init='lecun_uniform'))
             model.add(Activation(activationType))
-            layerSize = 100
+            model.add(Dropout(0.1))
             model.add(Dense(layerSize, init='lecun_uniform'))
             model.add(Activation(activationType))
+            model.add(Dropout(0.1))
+            model.add(Dense(layerSize, init='lecun_uniform'))
+            model.add(Activation(activationType))
+            model.add(Dropout(0.1))
             model.add(Dense(layerSize, init='lecun_uniform'))
             model.add(Activation(activationType))
             model.add(Dense(num_actions, init='lecun_uniform'))
             model.add(Activation("linear"))
-            optimizer = optimizers.RMSprop(lr=learningRate, rho=0.9, epsilon=1e-06)
+            optimizer = optimizers.RMSprop(lr=learningRate)
             model.compile(loss="mse", optimizer=optimizer)
             #print model.summary()
             self.model = model
@@ -77,22 +83,27 @@ class DeepQ:
                 Y_batch = np.append(Y_batch, np.array([[reward]*num_actions]), axis=0)
         return self.model.train_on_batch(X_batch, Y_batch)
 
+
 if __name__ == '__main__':
     env = Game()
     exp_replay = ExperienceReplay(max_memory, 0.99)
     DQN = DeepQ()
     DQN.createModel('relu', learningRate)
-    for i_episode in range(iterations):
+    rewards = []
+    for i_episode in xrange(iterations):
         env = Game()
         loss = 0
         t = 0
         while True:
-            #print(env.string() + "\n")
             #print env.actions()
-            e *= 0.9995
+            if totalSteps > learnStart:
+                e *= 0.999
             if e < 0.05:
                 e = 0.05
+            env.standardize()
             s = env.state()
+            #print(env.string() + "\n")
+            #print env.actions()
             action = random.choice(env.actions())
             if(random.random() <= e):
                 action = random.choice(env.actions())
@@ -104,13 +115,13 @@ if __name__ == '__main__':
             env.b = ss
             t += 1
             totalSteps += 1
-            if done:
-                r -= 200
             exp_replay.remember([s, action, r, ss_formated], done)
             if totalSteps > learnStart:
                 loss += DQN.trainModel(exp_replay.get_batch(batch_size), 0.99)
             if done:
                 m = max(ss_formated)
-                print("Iteration {} complete with time {} and loss {} e = {}".format(i_episode, t, loss / t, e))
+                rewards.append(env.r)
+                print("Iteration {} complete with reward {} and loss {} e = {}".format(i_episode, env.r, loss / t, e))
                 #print(env.string())
-                break 
+                break
+        print sum(rewards) / (i_episode + 1)
