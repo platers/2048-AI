@@ -14,6 +14,7 @@ batch_size = 50
 totalSteps = 0
 learningRate = 0.000025
 learnStart = 3000
+updateTarget = 5
 
 class ExperienceReplay(object):
     def __init__(self, max_memory, discount):
@@ -38,6 +39,10 @@ from keras.models import Sequential
 from keras import optimizers
 from keras.layers.core import Dense, Activation, Dropout
 class DeepQ:
+    def __init__(self):
+        self.model = self.createModel('relu', learningRate)
+        self.target_model = self.createModel('relu', learningRate)
+
     def createModel(self, activationType, learningRate):
             layerSize = hidden_size
             model = Sequential()
@@ -57,10 +62,31 @@ class DeepQ:
             optimizer = optimizers.RMSprop(lr=learningRate)
             model.compile(loss="mse", optimizer=optimizer)
             #print model.summary()
-            self.model = model
+            return model
     def getAction(self, state):
         qValues = self.model.predict(state.reshape(1,len(state)))[0]
         return np.argmax(qValues)
+    def trainTargetModel(self, batch, discount):
+        X_batch = np.empty((0, input_size), dtype = np.float64)
+        Y_batch = np.empty((0, num_actions), dtype = np.float64)
+        for sample in batch:
+            state = sample[0][0]
+            action = sample[0][1]
+            reward = sample[0][2]
+            newState = sample[0][3]
+            isFinal = sample[1]
+            qValues = self.target_model.predict(state.reshape(1,len(state)))[0]
+            qValuesNewState = self.target_model.predict(newState.reshape(1,len(newState)))[0]
+            targetValue = reward + discount * max(qValuesNewState)
+
+            X_batch = np.append(X_batch, np.array([state.copy()]), axis=0)
+            Y_sample = qValues.copy()
+            Y_sample[action] = targetValue
+            Y_batch = np.append(Y_batch, np.array([Y_sample]), axis=0)
+            if isFinal:
+                X_batch = np.append(X_batch, np.array([newState.copy()]), axis=0)
+                Y_batch = np.append(Y_batch, np.array([[reward]*num_actions]), axis=0)
+        return self.target_model.train_on_batch(X_batch, Y_batch)
     def trainModel(self, batch, discount):
         X_batch = np.empty((0, input_size), dtype = np.float64)
         Y_batch = np.empty((0, num_actions), dtype = np.float64)
@@ -70,8 +96,8 @@ class DeepQ:
             reward = sample[0][2]
             newState = sample[0][3]
             isFinal = sample[1]
-            qValues = self.model.predict(state.reshape(1,len(state)))[0]
-            qValuesNewState = self.model.predict(newState.reshape(1,len(newState)))[0]
+            qValues = self.target_model.predict(state.reshape(1,len(state)))[0]
+            qValuesNewState = self.target_model.predict(newState.reshape(1,len(newState)))[0]
             targetValue = reward + discount * max(qValuesNewState)
 
             X_batch = np.append(X_batch, np.array([state.copy()]), axis=0)
@@ -88,7 +114,7 @@ if __name__ == '__main__':
     env = Game()
     exp_replay = ExperienceReplay(max_memory, 0.99)
     DQN = DeepQ()
-    DQN.createModel('relu', learningRate)
+    
     rewards = []
     for i_episode in xrange(iterations):
         env = Game()
@@ -98,8 +124,8 @@ if __name__ == '__main__':
             #print env.actions()
             if totalSteps > learnStart:
                 e *= 0.999
-            if e < 0.05:
-                e = 0.05
+            if e < 0.01:
+                e = 0.01
             env.standardize()
             s = env.state()
             #print(env.string() + "\n")
@@ -117,6 +143,8 @@ if __name__ == '__main__':
             totalSteps += 1
             exp_replay.remember([s, action, r, ss_formated], done)
             if totalSteps > learnStart:
+                if totalSteps % updateTarget == 0:
+                    DQN.trainTargetModel(exp_replay.get_batch(batch_size), 0.99)
                 loss += DQN.trainModel(exp_replay.get_batch(batch_size), 0.99)
             if done:
                 m = max(ss_formated)
